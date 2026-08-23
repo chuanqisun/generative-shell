@@ -1,16 +1,29 @@
 .app-component {
+  display: grid;
+  gap: 2ch;
+
   padding: 1ch;
 
-  .action-form {
+  form {
     display: grid;
+    gap: 0.5ch;
+  }
 
-    textarea {
-      field-sizing: content;
-      resize: none;
-      padding: 0.5ch;
-    }
-    button {
-      padding: 0.5ch;
+  textarea {
+    field-sizing: content;
+    resize: none;
+    padding: 0.5ch;
+  }
+
+  ul {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1ch;
+
+    li label {
+      display: flex;
+      gap: 0.5ch;
     }
   }
 }

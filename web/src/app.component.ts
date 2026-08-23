@@ -1,22 +1,54 @@
 import { html, render } from "lit";
+import { map as litMap } from "lit/directives/map.js";
+import { Subject } from "rxjs";
 import { fromFetch } from "rxjs/fetch";
-import { concatMap } from "rxjs/operators";
+import { concatMap, map } from "rxjs/operators";
 import "./app.component.css";
 import "./style.css";
 import { component, observe } from "./ui-kit";
 
 const AppComponent = component(() => {
   const dirFiles$ = useDirFiles$();
+  const script$ = new Subject<string>();
+  const result$ = new Subject<string>();
 
-  const handleSubmit = (event: Event) => {
+  const handleGenerate = (event: Event) => {
     event.preventDefault();
     const data = new FormData(event.target as HTMLFormElement);
-    const payload = { prompt: data.get("prompt") };
-    fetch("api/tasks", {
+    const payload = data.get("prompt");
+    fetch("api/code", {
       method: "POST",
       body: JSON.stringify(payload),
       headers: { "Content-Type": "application/json" },
-    });
+    })
+      .then((response) => response.json())
+      .then((data) => script$.next(data));
+  };
+
+  const handleRun = (event: Event) => {
+    event.preventDefault();
+    const data = new FormData(event.target as HTMLFormElement);
+    const script = data.get("script") as string;
+    fetch("api/run", {
+      method: "POST",
+      body: JSON.stringify(script.trim()),
+      headers: { "Content-Type": "application/json" },
+    })
+      .then((response) => response.json())
+      .then((data) => result$.next(JSON.stringify(data, null, 2)));
+  };
+
+  const handleSave = (event: Event) => {
+    event.preventDefault();
+    const data = new FormData(event.target as HTMLFormElement);
+    const result = data.get("content") as string;
+    fetch("api/files", {
+      method: "POST",
+      body: JSON.stringify({ filename: "result.json", content: result }),
+      headers: { "Content-Type": "application/json" },
+    })
+      .then((response) => response.json())
+      .then((data) => console.log("File saved:", data));
   };
 
   const handleEnter = (event: KeyboardEvent) => {
@@ -28,14 +60,43 @@ const AppComponent = component(() => {
 
   return html`<div class="app-component">
     <div>${observe(dirFiles$)}</div>
-    <form class="action-form" @submit=${handleSubmit}>
+    <form @submit=${handleGenerate}>
       <textarea name="prompt" @keydown=${handleEnter}></textarea>
+      <menu>
+        <button>Generate</button>
+      </menu>
+    </form>
+    <form @submit=${handleRun}>
+      <textarea name="script" @keydown=${handleEnter}>${observe(script$)}</textarea>
+      <menu>
+        <button>Run</button>
+      </menu>
+    </form>
+    <form @submit=${handleSave}>
+      <textarea name="content">${observe(result$)}</textarea>
+      <menu>
+        <button>Save</button>
+      </menu>
     </form>
   </div>`;
 });
 
 export function useDirFiles$() {
-  return fromFetch("api/files").pipe(concatMap((res) => res.json()));
+  return fromFetch("api/files").pipe(
+    concatMap((res) => res.json()),
+    map(
+      (entries) =>
+        html`<ul>
+          ${litMap(
+            entries,
+            (entry: string) =>
+              html`<li>
+                <label> <input type="checkbox" name="files" value="${entry}" /> ${entry} </label>
+              </li>`,
+          )}
+        </ul>`,
+    ),
+  );
 }
 
 render(AppComponent(), document.querySelector<HTMLDivElement>("#app")!);
