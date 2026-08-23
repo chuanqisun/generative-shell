@@ -1,0 +1,8 @@
+- Never start/run dev server for user. To verify your code, just `npm run check`. It will cover format, build, and test.
+- Follow [Coding Guide](./docs/agents/coding.instructions.md) for implementing code.
+- Follow [Components Guide](./docs/agents/component.instructions.md) for implementing UI components.
+- Follow [Style Guide](./docs/agents/style.instructions.md) for implementing CSS.
+- At the end of each round of implementation, make sure to refactor the code
+  - Keep systems decoupled, so future change only touches minimum surface
+  - Remove one of hacks, if something is repeating, refactor them into shared area.
+  - Avoid kitchen sink "utils", "helpers". Co-locate one-off code with their nearest system.
