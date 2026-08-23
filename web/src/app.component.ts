@@ -1,8 +1,8 @@
 import { html, render } from "lit";
 import { map as litMap } from "lit/directives/map.js";
-import { Subject } from "rxjs";
+import { Observable, Subject } from "rxjs";
 import { fromFetch } from "rxjs/fetch";
-import { concatMap, map } from "rxjs/operators";
+import { concatMap, map, startWith, switchMap } from "rxjs/operators";
 import "./app.component.css";
 import "./style.css";
 import { component, observe } from "./ui-kit";
@@ -82,7 +82,16 @@ const AppComponent = component(() => {
 });
 
 export function useDirFiles$() {
-  return fromFetch("api/files").pipe(
+  const fileEvents$ = new Observable<void>((subscriber) => {
+    const eventSource = new EventSource("api/files/subscribe");
+    eventSource.onmessage = () => subscriber.next();
+    eventSource.onerror = (err) => subscriber.error(err);
+    return () => eventSource.close();
+  });
+
+  return fileEvents$.pipe(
+    startWith(void 0),
+    switchMap(() => fromFetch("api/files")),
     concatMap((res) => res.json()),
     map(
       (entries) =>

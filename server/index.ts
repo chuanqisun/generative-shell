@@ -1,3 +1,4 @@
+import { watch } from "node:fs";
 import { readdir } from "node:fs/promises";
 import homepage from "../web/index.html";
 import { generateScript } from "./ai";
@@ -10,6 +11,30 @@ async function main() {
   const server = Bun.serve({
     development: true,
     routes: {
+      "/api/files/subscribe": {
+        GET: () => {
+          let watcher: ReturnType<typeof watch>;
+          const stream = new ReadableStream({
+            start(controller) {
+              watcher = watch(cwd, (eventType, filename) => {
+                const data = JSON.stringify({ eventType, filename });
+                controller.enqueue(`data: ${data}\n\n`);
+              });
+            },
+            cancel() {
+              watcher?.close();
+            },
+          });
+
+          return new Response(stream, {
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+            },
+          });
+        },
+      },
       "/api/files": {
         GET: async () => {
           const files = await readdir(cwd);
