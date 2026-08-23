@@ -1,5 +1,5 @@
 ---
-applyTo: "**/*.ts"
+applyTo: "web/**/*.ts"
 ---
 
 - We embrace pure functional style but also use component architecture for rxjs/lit/DOM

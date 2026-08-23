@@ -1,5 +1,5 @@
 ---
-applyTo: "**/*.css"
+applyTo: "web/**/*.css"
 ---
 
 # Style Guide

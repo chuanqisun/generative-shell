@@ -1,5 +1,5 @@
 ---
-applyTo: "**/*.component.ts"
+applyTo: "web/**/*.component.ts"
 ---
 
 # Quick Reference
