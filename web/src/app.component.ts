@@ -1,21 +1,26 @@
 import { html, render } from "lit";
-import { map as litMap } from "lit/directives/map.js";
-import { Observable, Subject } from "rxjs";
-import { fromFetch } from "rxjs/fetch";
-import { concatMap, map, startWith, switchMap } from "rxjs/operators";
+import { Subject } from "rxjs";
 import "./app.component.css";
 import "./style.css";
 import { component, observe } from "./ui-kit";
+import { useFileList$ } from "./use-file-list";
 
 const AppComponent = component(() => {
-  const dirFiles$ = useDirFiles$();
+  const dirFiles$ = useFileList$("files");
   const script$ = new Subject<string>();
   const result$ = new Subject<string>();
 
   const handleGenerate = (event: Event) => {
     event.preventDefault();
     const data = new FormData(event.target as HTMLFormElement);
-    const payload = data.get("prompt");
+
+    const selectedFiles = data.getAll("files") as string[];
+
+    const payload = {
+      files: selectedFiles,
+      prompt: data.get("prompt"),
+    };
+
     fetch("api/code", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -59,53 +64,26 @@ const AppComponent = component(() => {
   };
 
   return html`<div class="app-component">
-    <div>${observe(dirFiles$)}</div>
     <form @submit=${handleGenerate}>
+      <div>${observe(dirFiles$)}</div>
       <textarea name="prompt" @keydown=${handleEnter}></textarea>
       <menu>
         <button>Generate</button>
       </menu>
     </form>
     <form @submit=${handleRun}>
-      <textarea name="script" @keydown=${handleEnter}>${observe(script$)}</textarea>
+      <textarea name="script" @keydown=${handleEnter} .value=${observe(script$)}></textarea>
       <menu>
         <button>Run</button>
       </menu>
     </form>
     <form @submit=${handleSave}>
-      <textarea name="content">${observe(result$)}</textarea>
+      <textarea name="content" .value=${observe(result$)}></textarea>
       <menu>
         <button>Save</button>
       </menu>
     </form>
   </div>`;
 });
-
-export function useDirFiles$() {
-  const fileEvents$ = new Observable<void>((subscriber) => {
-    const eventSource = new EventSource("api/files/subscribe");
-    eventSource.onmessage = () => subscriber.next();
-    eventSource.onerror = (err) => subscriber.error(err);
-    return () => eventSource.close();
-  });
-
-  return fileEvents$.pipe(
-    startWith(void 0),
-    switchMap(() => fromFetch("api/files")),
-    concatMap((res) => res.json()),
-    map(
-      (entries) =>
-        html`<ul>
-          ${litMap(
-            entries,
-            (entry: string) =>
-              html`<li>
-                <label> <input type="checkbox" name="files" value="${entry}" /> ${entry} </label>
-              </li>`,
-          )}
-        </ul>`,
-    ),
-  );
-}
 
 render(AppComponent(), document.querySelector<HTMLDivElement>("#app")!);

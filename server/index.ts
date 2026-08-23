@@ -12,8 +12,9 @@ async function main() {
     development: true,
     routes: {
       "/api/files/subscribe": {
-        GET: () => {
+        GET: (req) => {
           let watcher: ReturnType<typeof watch>;
+          server.timeout(req, 0); // prevent SSE timeout error
           const stream = new ReadableStream({
             start(controller) {
               watcher = watch(cwd, (eventType, filename) => {
@@ -49,10 +50,10 @@ async function main() {
       },
       "/api/code": {
         POST: async (req) => {
-          const prompt = await req.json();
-          console.log(`[mugen] received task: ${JSON.stringify(prompt)}`);
+          const { files, prompt } = await req.json();
+          console.log(`[mugen] received task: ${JSON.stringify({ files, prompt })}`);
 
-          const script = await generateScript(prompt);
+          const script = await generateScript({ files, prompt, cwd });
           console.log(`[mugen] generated script`, script);
           return Response.json(script);
         },
