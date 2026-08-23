@@ -1,11 +1,14 @@
 :root {
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
+  font-family: monospace;
 }
 
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }

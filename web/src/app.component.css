@@ -1,2 +1,16 @@
 .app-component {
+  padding: 1ch;
+
+  .action-form {
+    display: grid;
+
+    textarea {
+      field-sizing: content;
+      resize: none;
+      padding: 0.5ch;
+    }
+    button {
+      padding: 0.5ch;
+    }
+  }
 }
