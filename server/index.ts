@@ -39,10 +39,7 @@ async function main() {
 
                 activeProcesses.set(id, proc);
 
-                const readPipe = async (
-                  readable: ReadableStream<Uint8Array> | number | null | undefined,
-                  type: "stdout" | "stderr"
-                ) => {
+                const readPipe = async (readable: ReadableStream<Uint8Array> | number | null | undefined, type: "stdout" | "stderr") => {
                   if (!readable || typeof readable === "number") return;
                   const reader = readable.getReader();
                   const decoder = new TextDecoder();
@@ -52,16 +49,12 @@ async function main() {
                       if (done || isClosed) break;
                       const text = decoder.decode(value, { stream: true });
                       if (text) {
-                        controller.enqueue(
-                          `data: ${JSON.stringify({ type, text })}\n\n`
-                        );
+                        controller.enqueue(`data: ${JSON.stringify({ type, text })}\n\n`);
                       }
                     }
                     const leftover = decoder.decode();
                     if (leftover && !isClosed) {
-                      controller.enqueue(
-                        `data: ${JSON.stringify({ type, text: leftover })}\n\n`
-                      );
+                      controller.enqueue(`data: ${JSON.stringify({ type, text: leftover })}\n\n`);
                     }
                   } catch {
                     // ignore errors on process termination/close
@@ -70,27 +63,19 @@ async function main() {
                   }
                 };
 
-                await Promise.all([
-                  readPipe(proc.stdout, "stdout"),
-                  readPipe(proc.stderr, "stderr"),
-                  proc.exited,
-                ]);
+                await Promise.all([readPipe(proc.stdout, "stdout"), readPipe(proc.stderr, "stderr"), proc.exited]);
 
                 if (!isClosed) {
                   isClosed = true;
                   activeProcesses.delete(id);
-                  controller.enqueue(
-                    `data: ${JSON.stringify({ type: "exit", code: proc.exitCode })}\n\n`
-                  );
+                  controller.enqueue(`data: ${JSON.stringify({ type: "exit", code: proc.exitCode })}\n\n`);
                   controller.close();
                 }
               } catch (error) {
                 if (!isClosed) {
                   isClosed = true;
                   activeProcesses.delete(id);
-                  controller.enqueue(
-                    `data: ${JSON.stringify({ type: "stderr", text: String(error) })}\n\n`
-                  );
+                  controller.enqueue(`data: ${JSON.stringify({ type: "stderr", text: String(error) })}\n\n`);
                   controller.close();
                 }
               }
