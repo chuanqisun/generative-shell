@@ -2,6 +2,8 @@ import { BehaviorSubject, Subject } from "rxjs";
 
 export interface ShellOptions {
   pty?: boolean;
+  cols?: number;
+  rows?: number;
 }
 
 export interface ShellRunner {
@@ -9,6 +11,8 @@ export interface ShellRunner {
   output$: Subject<string>;
   isRunning$: BehaviorSubject<boolean>;
   execute: (command: string, options?: ShellOptions) => void;
+  sendInput: (data: string) => void;
+  resize: (cols: number, rows: number) => void;
   cancel: () => void;
 }
 
@@ -60,6 +64,12 @@ export function useShell(): ShellRunner {
     if (options?.pty) {
       url.searchParams.set("pty", "true");
     }
+    if (options?.cols) {
+      url.searchParams.set("cols", String(options.cols));
+    }
+    if (options?.rows) {
+      url.searchParams.set("rows", String(options.rows));
+    }
 
     const eventSource = new EventSource(url.toString());
     activeEventSource = eventSource;
@@ -94,11 +104,31 @@ export function useShell(): ShellRunner {
     };
   };
 
+  const sendInput = (data: string) => {
+    if (!activeId) return;
+    fetch("api/shell/input", {
+      method: "POST",
+      body: JSON.stringify({ id: activeId, data }),
+      headers: { "Content-Type": "application/json" },
+    }).catch(() => {});
+  };
+
+  const resize = (cols: number, rows: number) => {
+    if (!activeId) return;
+    fetch("api/shell/resize", {
+      method: "POST",
+      body: JSON.stringify({ id: activeId, cols, rows }),
+      headers: { "Content-Type": "application/json" },
+    }).catch(() => {});
+  };
+
   return {
     stream$,
     output$,
     isRunning$,
     execute,
+    sendInput,
+    resize,
     cancel,
   };
 }

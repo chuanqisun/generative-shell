@@ -19,6 +19,8 @@ async function main() {
           const command = url.searchParams.get("command");
           const id = url.searchParams.get("id") || Math.random().toString(36).substring(2);
           const pty = url.searchParams.get("pty") === "true";
+          const cols = parseInt(url.searchParams.get("cols") || "80", 10);
+          const rows = parseInt(url.searchParams.get("rows") || "24", 10);
 
           if (!command) {
             return new Response("Missing command parameter", { status: 400 });
@@ -36,8 +38,8 @@ async function main() {
                   proc = Bun.spawn(["bash", "-c", command], {
                     cwd,
                     terminal: {
-                      cols: 80,
-                      rows: 24,
+                      cols,
+                      rows,
                       data(_term, data) {
                         if (isClosed) return;
                         const text = decoder.decode(data, { stream: true });
@@ -135,6 +137,40 @@ async function main() {
               const proc = activeProcesses.get(id);
               proc?.kill();
               activeProcesses.delete(id);
+            }
+            return Response.json({ success: true });
+          } catch (error) {
+            return Response.json({ error: String(error) }, { status: 500 });
+          }
+        },
+      },
+      "/api/shell/input": {
+        POST: async (req) => {
+          try {
+            const { id, data } = await req.json();
+            if (id && data) {
+              const proc = activeProcesses.get(id);
+              if (proc?.terminal) {
+                proc.terminal.write(data);
+              } else if (proc?.stdin && typeof proc.stdin !== "number") {
+                proc.stdin.write(data);
+              }
+            }
+            return Response.json({ success: true });
+          } catch (error) {
+            return Response.json({ error: String(error) }, { status: 500 });
+          }
+        },
+      },
+      "/api/shell/resize": {
+        POST: async (req) => {
+          try {
+            const { id, cols, rows } = await req.json();
+            if (id && cols && rows) {
+              const proc = activeProcesses.get(id);
+              if (proc?.terminal) {
+                proc.terminal.resize(cols, rows);
+              }
             }
             return Response.json({ success: true });
           } catch (error) {

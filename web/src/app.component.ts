@@ -27,6 +27,24 @@ const AppComponent = component(() => {
     term.open(container as HTMLElement);
     fitAddon.fit();
     (container as any)._term = term;
+    (container as any)._fitAddon = fitAddon;
+
+    term.onData((data) => {
+      shell.sendInput(data);
+    });
+
+    term.onResize(({ cols, rows }) => {
+      shell.resize(cols, rows);
+    });
+
+    const resizeObserver = new ResizeObserver(() => {
+      try {
+        fitAddon.fit();
+      } catch (err) {
+        console.error("Fit error:", err);
+      }
+    });
+    resizeObserver.observe(container);
 
     shell.stream$.subscribe((data) => {
       term.write(data);
@@ -38,8 +56,11 @@ const AppComponent = component(() => {
     const data = new FormData(event.target as HTMLFormElement);
     const command = data.get("command") as string;
     const pty = data.get("pty") === "on";
+    const term = (document.querySelector(".terminal-container") as any)?._term;
+    const cols = term ? term.cols : 80;
+    const rows = term ? term.rows : 24;
     if (command) {
-      shell.execute(command, { pty });
+      shell.execute(command, { pty, cols, rows });
     }
   };
 
