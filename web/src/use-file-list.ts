@@ -3,7 +3,7 @@ import { map as litMap } from "lit/directives/map.js";
 import { concatMap, map, Observable, startWith, switchMap } from "rxjs";
 import { fromFetch } from "rxjs/fetch";
 
-export function useFileList$(inputName: string) {
+export function useFileList$() {
   const fileEvents$ = new Observable<void>((subscriber) => {
     const eventSource = new EventSource("api/files/subscribe");
     eventSource.onmessage = () => subscriber.next();
@@ -18,13 +18,7 @@ export function useFileList$(inputName: string) {
     map(
       (entries) =>
         html`<ul>
-          ${litMap(
-            entries,
-            (entry: string) =>
-              html`<li>
-                <label> <input type="checkbox" name="${inputName}" value="${entry}" /> ${entry} </label>
-              </li>`,
-          )}
+          ${litMap(entries, (entry: string) => html`<li>${entry}</li>`)}
         </ul>`,
     ),
   );
