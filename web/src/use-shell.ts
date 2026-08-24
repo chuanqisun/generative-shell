@@ -1,13 +1,19 @@
 import { BehaviorSubject, Subject } from "rxjs";
 
+export interface ShellOptions {
+  pty?: boolean;
+}
+
 export interface ShellRunner {
+  stream$: Subject<string>;
   output$: Subject<string>;
   isRunning$: BehaviorSubject<boolean>;
-  execute: (command: string) => void;
+  execute: (command: string, options?: ShellOptions) => void;
   cancel: () => void;
 }
 
 export function useShell(): ShellRunner {
+  const stream$ = new Subject<string>();
   const output$ = new Subject<string>();
   const isRunning$ = new BehaviorSubject<boolean>(false);
   let activeEventSource: EventSource | null = null;
@@ -28,12 +34,14 @@ export function useShell(): ShellRunner {
       activeEventSource = null;
       activeId = null;
       isRunning$.next(false);
-      accumulatedOutput += "\n[command cancelled]";
+      const cancelMsg = "\r\n[command cancelled]\r\n";
+      accumulatedOutput += cancelMsg;
+      stream$.next(cancelMsg);
       output$.next(accumulatedOutput);
     }
   };
 
-  const execute = (command: string) => {
+  const execute = (command: string, options?: ShellOptions) => {
     if (activeEventSource) {
       cancel();
     }
@@ -43,11 +51,15 @@ export function useShell(): ShellRunner {
     isRunning$.next(true);
 
     accumulatedOutput = "";
+    stream$.next("\x1bc"); // Send ANSI reset clear screen signal
     output$.next("");
 
     const url = new URL("api/shell/subscribe", window.location.href);
     url.searchParams.set("command", command);
     url.searchParams.set("id", id);
+    if (options?.pty) {
+      url.searchParams.set("pty", "true");
+    }
 
     const eventSource = new EventSource(url.toString());
     activeEventSource = eventSource;
@@ -56,6 +68,7 @@ export function useShell(): ShellRunner {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "stdout" || msg.type === "stderr") {
+          stream$.next(msg.text);
           accumulatedOutput += msg.text;
           output$.next(accumulatedOutput);
         } else if (msg.type === "exit") {
@@ -82,6 +95,7 @@ export function useShell(): ShellRunner {
   };
 
   return {
+    stream$,
     output$,
     isRunning$,
     execute,

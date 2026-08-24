@@ -18,51 +18,79 @@ async function main() {
           const url = new URL(req.url);
           const command = url.searchParams.get("command");
           const id = url.searchParams.get("id") || Math.random().toString(36).substring(2);
+          const pty = url.searchParams.get("pty") === "true";
 
           if (!command) {
             return new Response("Missing command parameter", { status: 400 });
           }
 
-          console.log(`[mugen] executing shell command via SSE: ${command}`);
+          console.log(`[mugen] executing shell command via SSE: ${command} (pty: ${pty})`);
           let proc: ReturnType<typeof Bun.spawn> | undefined;
           let isClosed = false;
 
           const stream = new ReadableStream({
             async start(controller) {
               try {
-                proc = Bun.spawn(["bash", "-c", command], {
-                  cwd,
-                  stdout: "pipe",
-                  stderr: "pipe",
-                });
-
-                activeProcesses.set(id, proc);
-
-                const readPipe = async (readable: ReadableStream<Uint8Array> | number | null | undefined, type: "stdout" | "stderr") => {
-                  if (!readable || typeof readable === "number") return;
-                  const reader = readable.getReader();
+                if (pty) {
                   const decoder = new TextDecoder();
-                  try {
-                    while (true) {
-                      const { done, value } = await reader.read();
-                      if (done || isClosed) break;
-                      const text = decoder.decode(value, { stream: true });
-                      if (text) {
-                        controller.enqueue(`data: ${JSON.stringify({ type, text })}\n\n`);
-                      }
-                    }
-                    const leftover = decoder.decode();
-                    if (leftover && !isClosed) {
-                      controller.enqueue(`data: ${JSON.stringify({ type, text: leftover })}\n\n`);
-                    }
-                  } catch {
-                    // ignore errors on process termination/close
-                  } finally {
-                    reader.releaseLock();
-                  }
-                };
+                  proc = Bun.spawn(["bash", "-c", command], {
+                    cwd,
+                    terminal: {
+                      cols: 80,
+                      rows: 24,
+                      data(_term, data) {
+                        if (isClosed) return;
+                        const text = decoder.decode(data, { stream: true });
+                        if (text) {
+                          controller.enqueue(`data: ${JSON.stringify({ type: "stdout", text })}\n\n`);
+                        }
+                      },
+                    },
+                  });
 
-                await Promise.all([readPipe(proc.stdout, "stdout"), readPipe(proc.stderr, "stderr"), proc.exited]);
+                  activeProcesses.set(id, proc);
+
+                  await proc.exited;
+
+                  const leftover = decoder.decode();
+                  if (leftover && !isClosed) {
+                    controller.enqueue(`data: ${JSON.stringify({ type: "stdout", text: leftover })}\n\n`);
+                  }
+                } else {
+                  proc = Bun.spawn(["bash", "-c", command], {
+                    cwd,
+                    stdout: "pipe",
+                    stderr: "pipe",
+                  });
+
+                  activeProcesses.set(id, proc);
+
+                  const readPipe = async (readable: ReadableStream<Uint8Array> | number | null | undefined, type: "stdout" | "stderr") => {
+                    if (!readable || typeof readable === "number") return;
+                    const reader = readable.getReader();
+                    const decoder = new TextDecoder();
+                    try {
+                      while (true) {
+                        const { done, value } = await reader.read();
+                        if (done || isClosed) break;
+                        const text = decoder.decode(value, { stream: true });
+                        if (text) {
+                          controller.enqueue(`data: ${JSON.stringify({ type, text })}\n\n`);
+                        }
+                      }
+                      const leftover = decoder.decode();
+                      if (leftover && !isClosed) {
+                        controller.enqueue(`data: ${JSON.stringify({ type, text: leftover })}\n\n`);
+                      }
+                    } catch {
+                      // ignore errors on process termination/close
+                    } finally {
+                      reader.releaseLock();
+                    }
+                  };
+
+                  await Promise.all([readPipe(proc.stdout, "stdout"), readPipe(proc.stderr, "stderr"), proc.exited]);
+                }
 
                 if (!isClosed) {
                   isClosed = true;
