@@ -7,7 +7,8 @@ const activeProcesses = new Map<string, ReturnType<typeof Bun.spawn>>();
 
 async function main() {
   const { absoluteWorkingDirectory: cwd } = parse(process.argv);
-  console.log(`[mugen] started in ${cwd}`);
+  const defaultShell = process.env.SHELL || "bash";
+  console.log(`[mugen] started in ${cwd} (shell: ${defaultShell})`);
 
   const server = Bun.serve({
     development: true,
@@ -18,15 +19,11 @@ async function main() {
           const url = new URL(req.url);
           const command = url.searchParams.get("command");
           const id = url.searchParams.get("id") || Math.random().toString(36).substring(2);
-          const pty = url.searchParams.get("pty") === "true";
+          const pty = url.searchParams.get("pty") !== "false";
           const cols = parseInt(url.searchParams.get("cols") || "80", 10);
           const rows = parseInt(url.searchParams.get("rows") || "24", 10);
 
-          if (!command) {
-            return new Response("Missing command parameter", { status: 400 });
-          }
-
-          console.log(`[mugen] executing shell command via SSE: ${command} (pty: ${pty})`);
+          console.log(`[mugen] starting persistent shell session (id: ${id}, shell: ${defaultShell}, pty: ${pty})`);
           let proc: ReturnType<typeof Bun.spawn> | undefined;
           let isClosed = false;
 
@@ -35,8 +32,9 @@ async function main() {
               try {
                 if (pty) {
                   const decoder = new TextDecoder();
-                  proc = Bun.spawn(["bash", "-c", command], {
+                  proc = Bun.spawn([defaultShell], {
                     cwd,
+                    env: process.env,
                     terminal: {
                       cols,
                       rows,
@@ -52,6 +50,10 @@ async function main() {
 
                   activeProcesses.set(id, proc);
 
+                  if (command && proc.terminal) {
+                    proc.terminal.write(command + "\n");
+                  }
+
                   await proc.exited;
 
                   const leftover = decoder.decode();
@@ -59,13 +61,19 @@ async function main() {
                     controller.enqueue(`data: ${JSON.stringify({ type: "stdout", text: leftover })}\n\n`);
                   }
                 } else {
-                  proc = Bun.spawn(["bash", "-c", command], {
+                  proc = Bun.spawn([defaultShell], {
                     cwd,
+                    env: process.env,
+                    stdin: "pipe",
                     stdout: "pipe",
                     stderr: "pipe",
                   });
 
                   activeProcesses.set(id, proc);
+
+                  if (command && proc.stdin && typeof proc.stdin !== "number") {
+                    proc.stdin.write(command + "\n");
+                  }
 
                   const readPipe = async (readable: ReadableStream<Uint8Array> | number | null | undefined, type: "stdout" | "stderr") => {
                     if (!readable || typeof readable === "number") return;

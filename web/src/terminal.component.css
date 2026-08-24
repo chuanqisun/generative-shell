@@ -1,0 +1,41 @@
+.terminal-component {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: #1e1e1e;
+  overflow: hidden;
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4ch 1ch;
+    background: #252526;
+    border-bottom: 1px solid #333;
+
+    .title {
+      font-size: 0.85em;
+      color: #ccc;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    button {
+      font-size: 0.8em;
+      color: #aaa;
+
+      &:hover {
+        color: #ff6b6b;
+      }
+    }
+  }
+
+  .terminal-container {
+    width: 100%;
+    height: 350px;
+    padding: 0.5ch;
+    overflow: hidden;
+  }
+}

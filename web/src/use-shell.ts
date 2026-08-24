@@ -6,63 +6,90 @@ export interface ShellOptions {
   rows?: number;
 }
 
-export interface ShellRunner {
+export interface ShellSession {
+  id: string;
+  title: string;
   stream$: Subject<string>;
   output$: Subject<string>;
   isRunning$: BehaviorSubject<boolean>;
-  execute: (command: string, options?: ShellOptions) => void;
   sendInput: (data: string) => void;
   resize: (cols: number, rows: number) => void;
-  cancel: () => void;
+  close: () => void;
 }
 
-export function useShell(): ShellRunner {
-  const stream$ = new Subject<string>();
-  const output$ = new Subject<string>();
-  const isRunning$ = new BehaviorSubject<boolean>(false);
-  let activeEventSource: EventSource | null = null;
-  let activeId: string | null = null;
-  let accumulatedOutput = "";
+export interface ShellManager {
+  sessions$: BehaviorSubject<ShellSession[]>;
+  createSession: (command?: string, options?: ShellOptions) => ShellSession;
+  closeSession: (id: string) => void;
+}
 
-  const cancel = () => {
-    if (activeId) {
-      const idToCancel = activeId;
-      fetch("api/shell/cancel", {
-        method: "POST",
-        body: JSON.stringify({ id: idToCancel }),
-        headers: { "Content-Type": "application/json" },
-      }).catch(() => {});
-    }
-    if (activeEventSource) {
-      activeEventSource.close();
-      activeEventSource = null;
-      activeId = null;
-      isRunning$.next(false);
-      const cancelMsg = "\r\n[command cancelled]\r\n";
-      accumulatedOutput += cancelMsg;
-      stream$.next(cancelMsg);
-      output$.next(accumulatedOutput);
+export function useShell(): ShellManager {
+  const sessions$ = new BehaviorSubject<ShellSession[]>([]);
+
+  const closeSession = (id: string) => {
+    const currentSessions = sessions$.value;
+    const session = currentSessions.find((s) => s.id === id);
+    if (session) {
+      session.close();
     }
   };
 
-  const execute = (command: string, options?: ShellOptions) => {
-    if (activeEventSource) {
-      cancel();
-    }
+  const createSession = (command?: string, options?: ShellOptions): ShellSession => {
+    const id = Math.random().toString(36).substring(2, 9);
+    const stream$ = new Subject<string>();
+    const output$ = new Subject<string>();
+    const isRunning$ = new BehaviorSubject<boolean>(true);
+    let activeEventSource: EventSource | null = null;
+    let accumulatedOutput = "";
+    let isClosed = false;
 
-    const id = Math.random().toString(36).substring(2);
-    activeId = id;
-    isRunning$.next(true);
+    const removeSelf = () => {
+      if (isClosed) return;
+      isClosed = true;
+      isRunning$.next(false);
+      const updated = sessions$.value.filter((s) => s.id !== id);
+      sessions$.next(updated);
+    };
 
-    accumulatedOutput = "";
-    stream$.next("\x1bc"); // Send ANSI reset clear screen signal
-    output$.next("");
+    const close = () => {
+      if (isClosed) return;
+      if (activeEventSource) {
+        activeEventSource.close();
+        activeEventSource = null;
+      }
+      fetch("api/shell/cancel", {
+        method: "POST",
+        body: JSON.stringify({ id }),
+        headers: { "Content-Type": "application/json" },
+      }).catch(() => {});
+      removeSelf();
+    };
+
+    const sendInput = (data: string) => {
+      if (isClosed) return;
+      fetch("api/shell/input", {
+        method: "POST",
+        body: JSON.stringify({ id, data }),
+        headers: { "Content-Type": "application/json" },
+      }).catch(() => {});
+    };
+
+    const resize = (cols: number, rows: number) => {
+      if (isClosed) return;
+      fetch("api/shell/resize", {
+        method: "POST",
+        body: JSON.stringify({ id, cols, rows }),
+        headers: { "Content-Type": "application/json" },
+      }).catch(() => {});
+    };
 
     const url = new URL("api/shell/subscribe", window.location.href);
-    url.searchParams.set("command", command);
     url.searchParams.set("id", id);
-    if (options?.pty) {
-      url.searchParams.set("pty", "true");
+    if (command) {
+      url.searchParams.set("command", command);
+    }
+    if (options?.pty !== undefined) {
+      url.searchParams.set("pty", String(options.pty));
     }
     if (options?.cols) {
       url.searchParams.set("cols", String(options.cols));
@@ -83,11 +110,8 @@ export function useShell(): ShellRunner {
           output$.next(accumulatedOutput);
         } else if (msg.type === "exit") {
           eventSource.close();
-          if (activeEventSource === eventSource) {
-            activeEventSource = null;
-            activeId = null;
-            isRunning$.next(false);
-          }
+          activeEventSource = null;
+          removeSelf();
         }
       } catch (error) {
         console.error("Error parsing shell SSE message:", error);
@@ -96,39 +120,33 @@ export function useShell(): ShellRunner {
 
     eventSource.onerror = () => {
       eventSource.close();
-      if (activeEventSource === eventSource) {
-        activeEventSource = null;
-        activeId = null;
-        isRunning$.next(false);
-      }
+      activeEventSource = null;
+      removeSelf();
     };
+
+    const title = command ? `Shell (${command.slice(0, 25)}${command.length > 25 ? "..." : ""})` : `Shell (${id})`;
+
+    const session: ShellSession = {
+      id,
+      title,
+      stream$,
+      output$,
+      isRunning$,
+      sendInput,
+      resize,
+      close,
+    };
+
+    sessions$.next([...sessions$.value, session]);
+    return session;
   };
 
-  const sendInput = (data: string) => {
-    if (!activeId) return;
-    fetch("api/shell/input", {
-      method: "POST",
-      body: JSON.stringify({ id: activeId, data }),
-      headers: { "Content-Type": "application/json" },
-    }).catch(() => {});
-  };
-
-  const resize = (cols: number, rows: number) => {
-    if (!activeId) return;
-    fetch("api/shell/resize", {
-      method: "POST",
-      body: JSON.stringify({ id: activeId, cols, rows }),
-      headers: { "Content-Type": "application/json" },
-    }).catch(() => {});
-  };
+  // Automatically open initial persistent shell session on load
+  createSession();
 
   return {
-    stream$,
-    output$,
-    isRunning$,
-    execute,
-    sendInput,
-    resize,
-    cancel,
+    sessions$,
+    createSession,
+    closeSession,
   };
 }
