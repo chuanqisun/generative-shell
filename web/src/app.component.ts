@@ -39,9 +39,9 @@ const AppComponent = component(() => {
       repeat(
         sessions,
         (session) => session.id,
-        (session) => TerminalComponent({ session })
-      )
-    )
+        (session) => TerminalComponent({ session }),
+      ),
+    ),
   );
 
   return html`<div class="app-component">
